@@ -324,17 +324,16 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       {/* ═══════════════════════════════════════ */}
-      {/* MAIN CONTENT                           */}
+      {/* CONTENT WRAPPER (main + footer stacked) */}
       {/* ═══════════════════════════════════════ */}
-      <main
-        className={cn(
-          "flex-1 w-full min-w-0 overflow-x-hidden",
-          // Padding
-          "px-3 pb-24 pt-4 md:px-8 md:pb-8 md:pt-6",
-          "transition-all duration-300",
-        )}
-      >
-        <div className="w-full">
+      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+        <main
+          className={cn(
+            "flex-1 w-full",
+            "px-3 pb-24 pt-4 md:px-8 md:pb-8 md:pt-6",
+            "transition-all duration-300",
+          )}
+        >
           <AnimatePresence mode="wait">
             <motion.div
               key={pathname}
@@ -346,19 +345,13 @@ export function AppShell({ children }: { children: ReactNode }) {
               {children}
             </motion.div>
           </AnimatePresence>
-        </div>
-      </main>
+        </main>
 
-      {/* ═══════════════════════════════════════ */}
-      {/* DESKTOP FOOTER                         */}
-      {/* ═══════════════════════════════════════ */}
-      <footer
-        className={cn(
-          "hidden md:block border-t border-border/60 py-4 text-center text-xs text-muted-foreground transition-all duration-300",
-        )}
-      >
-        © Kerajaan Jeruk · dipersembahkan untuk Bangsawan kelas TI
-      </footer>
+        {/* DESKTOP FOOTER */}
+        <footer className="hidden md:block border-t border-border/60 py-4 text-center text-xs text-muted-foreground">
+          © Kerajaan Jeruk · dipersembahkan untuk Bangsawan kelas TI
+        </footer>
+      </div>
 
       {/* ═══════════════════════════════════════ */}
       {/* MOBILE BOTTOM NAV (< md)               */}
