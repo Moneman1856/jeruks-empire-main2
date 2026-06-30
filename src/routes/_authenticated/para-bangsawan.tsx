@@ -86,55 +86,124 @@ function ParaBangsawan() {
         {anggota?.map((a) => {
           const isYM = a.role === "yang_mulia";
           return (
-            <article
-              key={a.id}
-              className={`rounded-2xl border bg-card p-4 flex gap-3 ${isYM ? "border-plum/40" : ""}`}
-            >
-              <div className="size-16 rounded-full bg-cream shrink-0 overflow-hidden">
-                {a.foto_url ? <img src={a.foto_url} alt={a.nama} className="size-full object-cover" /> : null}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <h3 className="font-medium truncate">{a.nama}</h3>
-                  {isYM && <Crown className="size-4 text-plum" />}
+            <Dialog key={a.id}>
+              <DialogTrigger asChild>
+                <article
+                  className={`rounded-2xl border bg-card p-4 flex gap-3 cursor-pointer transition-all hover:shadow-md hover:border-empire/50 ${isYM ? "border-plum/40" : ""}`}
+                >
+                  <div className="size-16 rounded-full bg-cream shrink-0 overflow-hidden">
+                    {a.foto_url ? <img src={a.foto_url} alt={a.nama} className="size-full object-cover" /> : null}
+                  </div>
+                  <div className="flex-1 min-w-0 text-left">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h3 className="font-medium truncate">{a.nama}</h3>
+                      {isYM && <Crown className="size-4 text-plum" />}
+                    </div>
+                    <p className={`text-xs ${isYM ? "text-plum font-medium" : "text-muted-foreground"}`}>
+                      {roleLabel[a.role]}
+                    </p>
+                    <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+                      {a.ig && (
+                        <span className="inline-flex items-center gap-1">
+                          <Instagram className="size-3" /> @{a.ig.replace(/^@/, "")}
+                        </span>
+                      )}
+                      {a.tiktok && (
+                        <span className="inline-flex items-center gap-1">
+                          <Music2 className="size-3" /> @{a.tiktok.replace(/^@/, "")}
+                        </span>
+                      )}
+                      {a.wa && (
+                        <span className="inline-flex items-center gap-1">
+                          <MessageCircle className="size-3" /> WA
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="text-center font-display text-2xl text-empire">Profil Bangsawan</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="size-24 rounded-full bg-cream overflow-hidden border-2 border-empire/20">
+                      {a.foto_url ? <img src={a.foto_url} alt={a.nama} className="size-full object-cover" /> : null}
+                    </div>
+                    <div className="text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <h3 className="font-medium text-lg">{a.nama}</h3>
+                        {isYM && <Crown className="size-5 text-plum" />}
+                      </div>
+                      <p className={`text-sm ${isYM ? "text-plum font-medium" : "text-muted-foreground"}`}>
+                        {roleLabel[a.role]} {a.panggilan ? `• Akrab disapa "${a.panggilan}"` : ""}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 rounded-xl bg-accent/50 p-4 text-sm">
+                    {a.nim && (
+                      <div>
+                        <span className="text-muted-foreground block text-xs">Nomor Induk (NIM)</span>
+                        <span className="font-mono">{a.nim}</span>
+                      </div>
+                    )}
+                    {(a.tempat_lahir || a.tgl_lahir) && (
+                      <div>
+                        <span className="text-muted-foreground block text-xs">Tempat, Tgl Lahir</span>
+                        <span>{a.tempat_lahir || "?"}, {a.tgl_lahir || "?"}</span>
+                      </div>
+                    )}
+                    {a.hobi && (
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground block text-xs">Kegemaran (Hobi)</span>
+                        <span>{a.hobi}</span>
+                      </div>
+                    )}
+                    {a.motto && (
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground block text-xs">Semboyan Hidup (Motto)</span>
+                        <span className="italic">"{a.motto}"</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-center gap-4 pt-2">
+                    {a.ig && (
+                      <a
+                        href={`https://instagram.com/${a.ig.replace(/^@/, "")}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-sm hover:bg-empire hover:text-empire-foreground transition-colors"
+                      >
+                        <Instagram className="size-4" /> IG
+                      </a>
+                    )}
+                    {a.tiktok && (
+                      <a
+                        href={`https://tiktok.com/@${a.tiktok.replace(/^@/, "")}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-sm hover:bg-empire hover:text-empire-foreground transition-colors"
+                      >
+                        <Music2 className="size-4" /> TikTok
+                      </a>
+                    )}
+                    {a.wa && (
+                      <a
+                        href={`https://wa.me/${a.wa.replace(/\D/g, "")}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-sm hover:bg-empire hover:text-empire-foreground transition-colors"
+                      >
+                        <MessageCircle className="size-4" /> Chat
+                      </a>
+                    )}
+                  </div>
                 </div>
-                <p className={`text-xs ${isYM ? "text-plum font-medium" : "text-muted-foreground"}`}>
-                  {roleLabel[a.role]}
-                </p>
-                <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-                  {a.ig && (
-                    <a
-                      className="inline-flex items-center gap-1 hover:text-empire"
-                      href={`https://instagram.com/${a.ig.replace(/^@/, "")}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <Instagram className="size-3" /> @{a.ig.replace(/^@/, "")}
-                    </a>
-                  )}
-                  {a.tiktok && (
-                    <a
-                      className="inline-flex items-center gap-1 hover:text-empire"
-                      href={`https://tiktok.com/@${a.tiktok.replace(/^@/, "")}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <Music2 className="size-3" /> @{a.tiktok.replace(/^@/, "")}
-                    </a>
-                  )}
-                  {a.wa && (
-                    <a
-                      className="inline-flex items-center gap-1 hover:text-empire"
-                      href={`https://wa.me/${a.wa.replace(/\D/g, "")}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <MessageCircle className="size-3" /> WA
-                    </a>
-                  )}
-                </div>
-              </div>
-            </article>
+              </DialogContent>
+            </Dialog>
           );
         })}
       </div>
