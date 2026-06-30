@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
-import { Crown, Instagram, MessageCircle, Plus } from "lucide-react";
+import { Crown, Instagram, MessageCircle, Plus, Music2 } from "lucide-react";
 import { anggotaListQuery } from "@/lib/queries";
 import { createAnggota } from "@/lib/empire.functions";
 import { useActiveMember, canManageMembers } from "@/lib/active-member";
@@ -39,9 +39,10 @@ export const Route = createFileRoute("/_authenticated/para-bangsawan")({
 });
 
 const roleLabel: Record<string, string> = {
+  manager: "Manager (Admin)",
   yang_mulia: "Yang Mulia",
-  bendahara: "Bendahara",
   sekretaris: "Sekretaris",
+  bendahara: "Bendahara",
   bangsawan: "Bangsawan",
 };
 
@@ -58,6 +59,7 @@ function ParaBangsawan() {
       role: "yang_mulia" | "bendahara" | "sekretaris" | "bangsawan";
       foto_url?: string | null;
       ig?: string | null;
+      tiktok?: string | null;
       wa?: string | null;
       actor_id: string;
     }) => fn({ data: input }),
@@ -102,7 +104,7 @@ function ParaBangsawan() {
                 <p className={`text-xs ${isYM ? "text-plum font-medium" : "text-muted-foreground"}`}>
                   {roleLabel[a.role]}
                 </p>
-                <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+                <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                   {a.ig && (
                     <a
                       className="inline-flex items-center gap-1 hover:text-empire"
@@ -111,6 +113,16 @@ function ParaBangsawan() {
                       rel="noreferrer"
                     >
                       <Instagram className="size-3" /> @{a.ig.replace(/^@/, "")}
+                    </a>
+                  )}
+                  {a.tiktok && (
+                    <a
+                      className="inline-flex items-center gap-1 hover:text-empire"
+                      href={`https://tiktok.com/@${a.tiktok.replace(/^@/, "")}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <Music2 className="size-3" /> @{a.tiktok.replace(/^@/, "")}
                     </a>
                   )}
                   {a.wa && (
@@ -141,6 +153,7 @@ function TambahDialog({
     role: "yang_mulia" | "bendahara" | "sekretaris" | "bangsawan";
     foto_url?: string | null;
     ig?: string | null;
+    tiktok?: string | null;
     wa?: string | null;
   }) => void;
 }) {
@@ -149,6 +162,7 @@ function TambahDialog({
   const [role, setRole] = useState<"yang_mulia" | "bendahara" | "sekretaris" | "bangsawan">("bangsawan");
   const [foto, setFoto] = useState("");
   const [ig, setIg] = useState("");
+  const [tiktok, setTiktok] = useState("");
   const [wa, setWa] = useState("");
 
   return (
@@ -191,9 +205,13 @@ function TambahDialog({
               <Input value={ig} onChange={(e) => setIg(e.target.value)} placeholder="username" />
             </div>
             <div>
-              <Label>WhatsApp</Label>
-              <Input value={wa} onChange={(e) => setWa(e.target.value)} placeholder="0812..." />
+              <Label>TikTok</Label>
+              <Input value={tiktok} onChange={(e) => setTiktok(e.target.value)} placeholder="username" />
             </div>
+          </div>
+          <div>
+            <Label>WhatsApp</Label>
+            <Input value={wa} onChange={(e) => setWa(e.target.value)} placeholder="0812..." />
           </div>
         </div>
         <DialogFooter>
@@ -208,6 +226,7 @@ function TambahDialog({
                 role,
                 foto_url: foto || null,
                 ig: ig || null,
+                tiktok: tiktok || null,
                 wa: wa || null,
               });
               setOpen(false);
@@ -215,6 +234,7 @@ function TambahDialog({
               setRole("bangsawan");
               setFoto("");
               setIg("");
+              setTiktok("");
               setWa("");
             }}
           >

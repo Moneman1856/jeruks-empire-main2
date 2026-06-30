@@ -372,6 +372,7 @@ export const createAnggota = createServerFn({ method: "POST" })
         foto_url: z.string().url().optional().nullable(),
         role: z.enum(["yang_mulia", "bendahara", "sekretaris", "bangsawan"]),
         ig: z.string().max(50).optional().nullable(),
+        tiktok: z.string().max(50).optional().nullable(),
         wa: z.string().max(30).optional().nullable(),
         actor_id: uuid,
       })

@@ -274,6 +274,7 @@ function EditDialog({ anggota, onClose }: { anggota: Anggota; onClose: () => voi
     nim: anggota.nim ?? "",
     wa: anggota.wa ?? "",
     ig: anggota.ig ?? "",
+    tiktok: anggota.tiktok ?? "",
     foto_url: anggota.foto_url ?? "",
     tempat_lahir: anggota.tempat_lahir ?? "",
     tgl_lahir: anggota.tgl_lahir ?? "",
@@ -362,10 +363,13 @@ function EditDialog({ anggota, onClose }: { anggota: Anggota; onClose: () => voi
             <Field label="Instagram">
               <Input value={form.ig} onChange={(e) => set("ig", e.target.value)} />
             </Field>
-            <Field label="Foto URL">
-              <Input value={form.foto_url} onChange={(e) => set("foto_url", e.target.value)} />
+            <Field label="TikTok">
+              <Input value={form.tiktok} onChange={(e) => set("tiktok", e.target.value)} />
             </Field>
           </div>
+          <Field label="Foto URL">
+            <Input value={form.foto_url} onChange={(e) => set("foto_url", e.target.value)} />
+          </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Tempat Lahir">
               <Input value={form.tempat_lahir} onChange={(e) => set("tempat_lahir", e.target.value)} />
