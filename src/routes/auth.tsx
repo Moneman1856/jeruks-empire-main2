@@ -7,6 +7,7 @@ import {
 } from "firebase/auth";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { auth, db } from "@/integrations/firebase/client";
+import { seedFirestoreIfEmpty } from "@/integrations/firebase/seed";
 import { Crest } from "@/components/empire/Crest";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,6 +61,9 @@ function AuthPage() {
     if (!email.trim()) return;
     setLoading(true);
     try {
+      // Seed data if empty (first launch bootstrapping)
+      await seedFirestoreIfEmpty();
+
       // Cek email terdaftar di Firestore anggota
       const snap = await getDocs(
         query(collection(db, "anggota"), where("email", "==", email.trim().toLowerCase()))
