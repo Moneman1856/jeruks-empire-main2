@@ -58,8 +58,8 @@ export const completionListQuery = queryOptions({
 export const jadwalListQuery = queryOptions({
   queryKey: ["jadwal", "list"],
   queryFn: async (): Promise<Jadwal[]> => {
-    const s = await getDocs(query(collection(db, "jadwal"), orderBy("hari"), orderBy("jam_mulai")));
-    return snap<Jadwal>(s);
+    const s = await getDocs(collection(db, "jadwal"));
+    return snap<Jadwal>(s).sort((a, b) => a.hari - b.hari || a.jam_mulai.localeCompare(b.jam_mulai));
   },
 });
 
