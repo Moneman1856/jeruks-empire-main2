@@ -30,14 +30,14 @@ const ANGGOTA_SEED: Array<{
 ];
 
 const JADWAL_SEED = [
-  { hari: 1, jam_mulai: "08:00", jam_selesai: "09:30", matkul: "Komunikasi Data", ruangan: "Ruang 2.3", dosen: "Ftm" },
-  { hari: 1, jam_mulai: "10:00", jam_selesai: "11:30", matkul: "Bahasa Inggris 2", ruangan: "Ruang 2.3", dosen: "Sw" },
-  { hari: 1, jam_mulai: "12:30", jam_selesai: "14:00", matkul: "Sistem Basis Data", ruangan: "Ruang 4", dosen: "Rsk" },
-  { hari: 2, jam_mulai: "12:30", jam_selesai: "14:00", matkul: "Sistem Operasi", ruangan: "Lab B", dosen: "Ty" },
-  { hari: 4, jam_mulai: "08:00", jam_selesai: "09:30", matkul: "Hardware & Software", ruangan: "Ruang 2.3", dosen: "Am" },
-  { hari: 4, jam_mulai: "10:00", jam_selesai: "11:30", matkul: "Struktur Data", ruangan: "Lab B", dosen: "Da" },
-  { hari: 4, jam_mulai: "12:30", jam_selesai: "14:00", matkul: "Matematika Diskrit", ruangan: "Ruang 2.3", dosen: "Yz" },
-  { hari: 5, jam_mulai: "08:00", jam_selesai: "10:40", matkul: "Pemrograman Web Dasar", ruangan: "Lab B", dosen: "Frd" },
+  { hari: 1, jam_mulai: "08:00", jam_selesai: "09:30", matkul: "Komunikasi Data (Komdat)", ruangan: "Ruang 2.3", dosen: "Ftm" },
+  { hari: 1, jam_mulai: "10:00", jam_selesai: "11:30", matkul: "B. Inggris 2", ruangan: "Ruang 2.3", dosen: "Sw" },
+  { hari: 1, jam_mulai: "12:30", jam_selesai: "14:00", matkul: "Sistem Basis Data (Sist. Basis Dt)", ruangan: "Ruang 4", dosen: "Rsk" },
+  { hari: 2, jam_mulai: "12:30", jam_selesai: "14:00", matkul: "Sistem Operasi", ruangan: "Ruang Lab B", dosen: "Ty" },
+  { hari: 4, jam_mulai: "08:00", jam_selesai: "09:30", matkul: "Hard/Software", ruangan: "Ruang 2.3", dosen: "Am" },
+  { hari: 4, jam_mulai: "10:00", jam_selesai: "11:30", matkul: "Struktur Data (Struk. Data)", ruangan: "Ruang Lab B", dosen: "Da" },
+  { hari: 4, jam_mulai: "12:30", jam_selesai: "14:00", matkul: "Matematika Diskrit (Mtk Diskrit)", ruangan: "Ruang 2.3", dosen: "Yz" },
+  { hari: 5, jam_mulai: "08:00", jam_selesai: "10:40", matkul: "Pemrograman Web Dasar (P. Web Dasar)", ruangan: "Ruang Lab B", dosen: "Frd" },
   { hari: 5, jam_mulai: "13:00", jam_selesai: "15:40", matkul: "Desain Grafis", ruangan: "Ruang 2.2", dosen: "Why" },
 ];
 
@@ -52,6 +52,7 @@ export async function seedFirestoreIfEmpty(): Promise<void> {
     const now = new Date().toISOString();
     let addedCount = 0;
 
+    // 1. Sync missing members
     for (const a of ANGGOTA_SEED) {
       if (a.email && !existingEmails.has(a.email.toLowerCase())) {
         const ref = doc(collection(db, "anggota"));
@@ -60,18 +61,20 @@ export async function seedFirestoreIfEmpty(): Promise<void> {
       }
     }
 
+    // 2. Always clear and overwrite jadwal to ensure it matches the latest seed definition
     const jadwalSnap = await getDocs(collection(db, "jadwal"));
-    if (jadwalSnap.empty) {
-      for (const j of JADWAL_SEED) {
-        const ref = doc(collection(db, "jadwal"));
-        batch.set(ref, { ...j, created_at: now });
-        addedCount++;
-      }
+    for (const docSnap of jadwalSnap.docs) {
+      batch.delete(docSnap.ref);
+    }
+    for (const j of JADWAL_SEED) {
+      const ref = doc(collection(db, "jadwal"));
+      batch.set(ref, { ...j, created_at: now });
+      addedCount++;
     }
 
     if (addedCount > 0) {
       await batch.commit();
-      console.log(`✅ Firestore seeded: Added ${addedCount} missing record(s).`);
+      console.log(`✅ Firestore seeded: Synced ${addedCount} record(s).`);
     }
   } catch (err) {
     console.error("❌ Seed failed:", err);
