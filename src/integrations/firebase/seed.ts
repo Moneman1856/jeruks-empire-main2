@@ -61,14 +61,12 @@ export async function seedFirestoreIfEmpty(): Promise<void> {
       }
     }
 
-    // 2. Always clear and overwrite jadwal to ensure it matches the latest seed definition
-    const jadwalSnap = await getDocs(collection(db, "jadwal"));
-    for (const docSnap of jadwalSnap.docs) {
-      batch.delete(docSnap.ref);
-    }
+    // 2. Overwrite jadwal using deterministic IDs with { merge: true } to bypass strict delete rules
     for (const j of JADWAL_SEED) {
-      const ref = doc(collection(db, "jadwal"));
-      batch.set(ref, { ...j, created_at: now });
+      // Create a predictable ID like "jadwal_1_0800"
+      const docId = `jadwal_${j.hari}_${j.jam_mulai.replace(":", "")}`;
+      const ref = doc(collection(db, "jadwal"), docId);
+      batch.set(ref, { ...j, created_at: now }, { merge: true });
       addedCount++;
     }
 

@@ -334,7 +334,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           "transition-all duration-300",
         )}
       >
-        <div className="mx-auto max-w-7xl w-full">
+        <div className="w-full">
           <AnimatePresence mode="wait">
             <motion.div
               key={pathname}
