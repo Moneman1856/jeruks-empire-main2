@@ -74,7 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* ═══════════════════════════════════════ */}
       <aside
         className={cn(
-          "hidden md:flex flex-col fixed inset-y-0 left-0 z-40 border-r border-border/60 bg-background/95 backdrop-blur-sm transition-all duration-300",
+          "hidden md:flex flex-col sticky top-0 h-screen z-40 shrink-0 border-r border-border/60 bg-background/95 backdrop-blur-sm transition-all duration-300",
           sidebarWidth,
         )}
       >
@@ -329,14 +329,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main
         className={cn(
           "flex-1 w-full min-w-0 overflow-x-hidden",
-          // Desktop: offset by sidebar width
-          sidebarCollapsed ? "md:ml-[68px]" : "md:ml-60",
           // Padding
           "px-3 pb-24 pt-4 md:px-8 md:pb-8 md:pt-6",
           "transition-all duration-300",
         )}
       >
-        <div className="mx-auto max-w-5xl">
+        <div className="mx-auto max-w-7xl w-full">
           <AnimatePresence mode="wait">
             <motion.div
               key={pathname}
@@ -357,7 +355,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       <footer
         className={cn(
           "hidden md:block border-t border-border/60 py-4 text-center text-xs text-muted-foreground transition-all duration-300",
-          sidebarCollapsed ? "md:ml-[68px]" : "md:ml-60",
         )}
       >
         © Kerajaan Jeruk · dipersembahkan untuk Bangsawan kelas TI
