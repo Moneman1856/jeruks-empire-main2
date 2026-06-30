@@ -26,6 +26,7 @@ const ANGGOTA_SEED: Array<{
   { urutan: 11, nama: "Rifqi Fadhilah Alif", panggilan: "Rifqi / Kisot", role: "bangsawan", email: "fadhilahrifqi190703@gmail.com", nim: "2511007", wa: "08812927551", ig: "ryuujiichiro", tiktok: "rifqi.f_", tempat_lahir: "Magelang", tgl_lahir: "2003-07-19", foto_url: "https://drive.google.com/uc?id=1fwmWapsLtpS8Hy_PwcKS4SOILYtRO4gW", hobi: "Nonton Film/Anime, Bermain Game", motto: "tetaplah berputus asa dan jgn bersemangat" },
   { urutan: 12, nama: "Dhea Arnesyaningsih", panggilan: "Dhea / Nesya", role: "bangsawan", email: "dheanesyaa@gmail.com", nim: "2511022", wa: "082331206906", ig: "dheeysy_", tiktok: "second neyy", tempat_lahir: "Magelang", tgl_lahir: "2007-07-06", foto_url: "https://drive.google.com/uc?id=1UG4vSBgS2sMesTNxDkNt79SCt9GQRx7U", hobi: "Aku suka ngoding tapi klo gda error nya", motto: '"Kunci sukses itu consistency. Konsisten mengeluh tapi tetap jalan terus."' },
   { urutan: 13, nama: "Wisnu Candra", panggilan: "Candra", role: "bangsawan", email: "cw104966@gmail.com", nim: null, wa: "085700901960", ig: null, tiktok: null, tempat_lahir: null, tgl_lahir: null, foto_url: null, hobi: null, motto: null },
+  { urutan: 14, nama: "Flora Afinka", panggilan: "Vlo", role: "bangsawan", email: "floraafinka06@gmail.com", nim: "2511006", wa: "081326986830", ig: "vloraavinca", tiktok: "vlovnca", tempat_lahir: "Magelang", tgl_lahir: "2006-03-02", foto_url: "https://drive.google.com/uc?id=1xD1Yiw4y_4t2-V83McijUii12-l51jlY", hobi: "healing", motto: "secret" },
 ];
 
 const JADWAL_SEED = [
@@ -43,23 +44,35 @@ const JADWAL_SEED = [
 export async function seedFirestoreIfEmpty(): Promise<void> {
   try {
     const snap = await getDocs(collection(db, "anggota"));
-    if (!snap.empty) return; // already seeded
+    const existingEmails = new Set(
+      snap.docs.map((doc) => doc.data().email?.toLowerCase()).filter(Boolean)
+    );
 
     const batch = writeBatch(db);
     const now = new Date().toISOString();
+    let addedCount = 0;
 
     for (const a of ANGGOTA_SEED) {
-      const ref = doc(collection(db, "anggota"));
-      batch.set(ref, { ...a, firebaseUid: null, created_at: now });
+      if (a.email && !existingEmails.has(a.email.toLowerCase())) {
+        const ref = doc(collection(db, "anggota"));
+        batch.set(ref, { ...a, firebaseUid: null, created_at: now });
+        addedCount++;
+      }
     }
 
-    for (const j of JADWAL_SEED) {
-      const ref = doc(collection(db, "jadwal"));
-      batch.set(ref, { ...j, created_at: now });
+    const jadwalSnap = await getDocs(collection(db, "jadwal"));
+    if (jadwalSnap.empty) {
+      for (const j of JADWAL_SEED) {
+        const ref = doc(collection(db, "jadwal"));
+        batch.set(ref, { ...j, created_at: now });
+        addedCount++;
+      }
     }
 
-    await batch.commit();
-    console.log("✅ Firestore seeded with members and jadwal.");
+    if (addedCount > 0) {
+      await batch.commit();
+      console.log(`✅ Firestore seeded: Added ${addedCount} missing record(s).`);
+    }
   } catch (err) {
     console.error("❌ Seed failed:", err);
   }
