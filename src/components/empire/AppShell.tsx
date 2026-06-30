@@ -68,7 +68,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const sidebarWidth = sidebarCollapsed ? "w-[68px]" : "w-60";
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row overflow-x-hidden">
+    <div className="min-h-screen flex flex-col md:flex-row">
       {/* ═══════════════════════════════════════ */}
       {/* DESKTOP SIDEBAR (md+)                  */}
       {/* ═══════════════════════════════════════ */}
