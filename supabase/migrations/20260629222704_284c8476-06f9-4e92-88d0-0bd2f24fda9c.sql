@@ -1,0 +1,1 @@
+ALTER TABLE public.anggota ADD COLUMN IF NOT EXISTS tiktok text;

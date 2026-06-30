@@ -1,0 +1,26 @@
+{
+  "name": "Jeruk's Empire — Kerajaan Kelas TI",
+  "short_name": "Jeruk's Empire",
+  "description": "Balairung digital kelas TI: jadwal, tugas, perbendaharaan, dan titah mingguan.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a0b2e",
+  "theme_color": "#4c1d95",
+  "lang": "id",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
