@@ -92,7 +92,7 @@ function ParaBangsawan() {
                   className={`rounded-2xl border bg-card p-4 flex gap-3 cursor-pointer transition-all hover:shadow-md hover:border-empire/50 ${isYM ? "border-plum/40" : ""}`}
                 >
                   <div className="size-16 rounded-full bg-cream shrink-0 overflow-hidden">
-                    {a.foto_url ? <img src={a.foto_url} alt={a.nama} className="size-full object-cover" /> : null}
+                    {a.foto_url ? <img src={a.foto_url} alt={a.nama} className="size-full object-cover" loading="lazy" decoding="async" /> : null}
                   </div>
                   <div className="flex-1 min-w-0 text-left">
                     <div className="flex items-center gap-1.5 flex-wrap">
