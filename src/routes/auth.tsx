@@ -116,7 +116,7 @@ function AuthPage() {
     <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-b from-cream via-background to-cream">
       <div className="max-w-sm w-full text-center space-y-6">
         <div className="flex justify-center">
-          <Crest size={88} />
+          <img src="/logo.png" alt="Jeruk's Empire Logo" className="size-24 object-contain" />
         </div>
 
         <div>

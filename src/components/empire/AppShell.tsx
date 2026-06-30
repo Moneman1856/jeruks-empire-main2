@@ -81,7 +81,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Logo & collapse toggle */}
         <div className="flex items-center gap-2 px-4 py-4 border-b border-border/40">
           <Link to="/" className="flex items-center gap-2 shrink-0">
-            <Crest size={32} />
+            <img src="/logo.png" alt="Jeruk's Empire Logo" className="size-9 object-contain" />
             {!sidebarCollapsed && (
               <span className="font-display text-base tracking-tight leading-none">
                 <span className="text-empire">JERUK'S</span> EMPIRE
@@ -282,7 +282,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-30 border-b border-border/60 bg-background/85 backdrop-blur md:hidden">
         <div className="flex items-center gap-2 px-3 py-2.5">
           <Link to="/" className="flex items-center gap-2 shrink-0">
-            <Crest size={30} />
+            <img src="/logo.png" alt="Logo" className="size-8 object-contain" />
             <span className="font-display text-base tracking-tight leading-none">
               <span className="text-empire">JERUK'S</span> EMPIRE
             </span>

@@ -70,7 +70,7 @@ function AuthenticatedLayout() {
   if (checking) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Crest size={64} />
+        <img src="/logo.png" alt="Logo" className="size-16 object-contain" />
       </div>
     );
   }
@@ -95,7 +95,7 @@ function PendingScreen({ email }: { email: string }) {
     <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-b from-cream via-background to-cream">
       <div className="max-w-md w-full text-center space-y-5">
         <div className="flex justify-center">
-          <Crest size={72} />
+          <img src="/logo.png" alt="Logo" className="size-20 object-contain" />
         </div>
         <div className="inline-flex items-center gap-2 rounded-full bg-zest/20 px-3 py-1 text-xs font-medium text-rind">
           <Clock className="size-3.5" /> Menanti persetujuan Admin
