@@ -7,7 +7,7 @@ import { id as idLocale } from "date-fns/locale";
 import { motion, AnimatePresence } from "framer-motion";
 import { QrCode, ExternalLink, Lock, ScanLine, Trash2, Copy, Clock, Timer } from "lucide-react";
 import { jadwalListQuery, absenShareListQuery } from "@/lib/queries";
-import { shareAbsenLink, deleteAbsenShare } from "@/lib/absen.functions";
+import { shareAbsenLink, deleteAbsenShare } from "@/lib/empire.functions";
 import { useActiveMember, isAdmin } from "@/lib/active-member";
 import { EmptyState } from "@/components/empire/EmptyState";
 import { QrScanner } from "@/components/empire/QrScanner";
@@ -77,10 +77,9 @@ function AbsenPage() {
     return m;
   }, [shares, tanggalStr]);
 
-  const shareFn = useServerFn(shareAbsenLink);
   const shareMut = useMutation({
     mutationFn: (input: { jadwal_id: string; tanggal: string; link: string }) =>
-      shareFn({ data: input }),
+      shareAbsenLink({ ...input, shared_by: member?.id ?? "" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["absen_share"] });
       toast.success("Mantap! Link absen berhasil dibagikan duluan 🏁");
@@ -92,9 +91,8 @@ function AbsenPage() {
     },
   });
 
-  const delFn = useServerFn(deleteAbsenShare);
   const delMut = useMutation({
-    mutationFn: (id: string) => delFn({ data: { id } }),
+    mutationFn: (id: string) => deleteAbsenShare(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["absen_share"] });
       toast.success("Link absen dihapus.");

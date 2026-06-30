@@ -1,1 +1,0 @@
-ALTER TABLE public.jadwal ADD COLUMN IF NOT EXISTS dosen text;

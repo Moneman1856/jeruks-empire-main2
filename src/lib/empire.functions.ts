@@ -1,527 +1,248 @@
-import { createServerFn } from "@tanstack/react-start";
-import { z } from "zod";
+/**
+ * Empire write operations using Firestore directly.
+ * All functions are plain async — no server functions needed.
+ */
+import {
+  collection, doc, addDoc, updateDoc, deleteDoc,
+  getDocs, query, where, writeBatch, serverTimestamp,
+} from "firebase/firestore";
+import { db } from "@/integrations/firebase/client";
+import type { AnggotaRole, TugasStatus, EventJenis, KasStatus } from "@/integrations/firebase/types";
 
-const uuid = z.string().uuid();
+const now = () => new Date().toISOString();
 
-async function admin() {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  return supabaseAdmin;
+// ─── HELPER: broadcast notification to all members ─────────────
+async function broadcastNotif(payload: {
+  judul: string; isi?: string | null; jenis: string; link?: string | null;
+  excludeAnggotaId?: string | null;
+}) {
+  const snap = await getDocs(collection(db, "anggota"));
+  const batch = writeBatch(db);
+  snap.docs.forEach((d) => {
+    if (d.id === payload.excludeAnggotaId) return;
+    const ref = doc(collection(db, "notifikasi"));
+    batch.set(ref, {
+      anggota_id: d.id, judul: payload.judul, isi: payload.isi ?? null,
+      jenis: payload.jenis, link: payload.link ?? null, terbaca: false, created_at: now(),
+    });
+  });
+  await batch.commit();
 }
 
-// ---------- TITAH ----------
-export const createTitah = createServerFn({ method: "POST" })
-  .inputValidator((input) =>
-    z
-      .object({
-        judul: z.string().min(1).max(200),
-        isi: z.string().min(1).max(2000),
-        pinned: z.boolean().optional(),
-        author_id: uuid,
-      })
-      .parse(input),
-  )
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    const { error } = await sb.from("titah").insert(data);
-    if (error) throw new Error(error.message);
-    await broadcastNotif(sb, {
-      judul: "Titah baru: " + data.judul,
-      isi: data.isi.slice(0, 140),
-      jenis: "titah",
-      link: "/",
-      excludeAnggotaId: data.author_id,
-    });
-    return { ok: true };
-  });
+// ─── TITAH ─────────────────────────────────────────────────────
+export async function createTitah(data: { judul: string; isi: string; pinned?: boolean; author_id: string }) {
+  const ref = await addDoc(collection(db, "titah"), { ...data, tanggal: now(), pinned: data.pinned ?? false, created_at: now() });
+  await broadcastNotif({ judul: "Titah baru: " + data.judul, isi: data.isi.slice(0, 140), jenis: "titah", link: "/", excludeAnggotaId: data.author_id });
+  return ref.id;
+}
 
-export const togglePinTitah = createServerFn({ method: "POST" })
-  .inputValidator((input) => z.object({ id: uuid, pinned: z.boolean() }).parse(input))
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    const { error } = await sb.from("titah").update({ pinned: data.pinned }).eq("id", data.id);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
+export async function togglePinTitah(id: string, pinned: boolean) {
+  await updateDoc(doc(db, "titah", id), { pinned });
+}
 
-// ---------- TUGAS ----------
-async function assertManageTugas(sb: Awaited<ReturnType<typeof admin>>, actor_id?: string) {
-  if (!actor_id) throw new Error("Aksi memerlukan identitas Bangsawan.");
-  const { data: actor } = await sb.from("anggota").select("role").eq("id", actor_id).maybeSingle();
-  if (!actor || !["yang_mulia", "sekretaris", "manager"].includes(actor.role)) {
-    throw new Error("Hanya Yang Mulia atau Sekretaris yang berhak mengubah titah tugas.");
+export async function deleteTitah(id: string) {
+  await deleteDoc(doc(db, "titah", id));
+}
+
+// ─── TUGAS ─────────────────────────────────────────────────────
+export async function createTugas(data: { judul: string; matkul: string; deadline: string; actor_id?: string }) {
+  const { actor_id, ...row } = data;
+  const ref = await addDoc(collection(db, "tugas"), { ...row, status: "belum", created_at: now() });
+  await broadcastNotif({ judul: "Tugas baru: " + data.judul, isi: data.matkul, jenis: "tugas", link: "/balai-tugas", excludeAnggotaId: actor_id ?? null });
+  return ref.id;
+}
+
+export async function updateTugas(id: string, data: { judul: string; matkul: string; deadline: string }) {
+  await updateDoc(doc(db, "tugas", id), data);
+}
+
+export async function deleteTugas(id: string) {
+  await deleteDoc(doc(db, "tugas", id));
+}
+
+export async function setTugasStatus(id: string, status: TugasStatus, actor_id?: string) {
+  await updateDoc(doc(db, "tugas", id), { status });
+  if (status === "selesai" && actor_id) {
+    await markPersonalDone(id, actor_id, true);
   }
 }
 
-export const createTugas = createServerFn({ method: "POST" })
-  .inputValidator((input) =>
-    z
-      .object({
-        judul: z.string().min(1).max(200),
-        matkul: z.string().min(1).max(100),
-        deadline: z.string().min(1),
-        actor_id: uuid.optional(),
-      })
-      .parse(input),
-  )
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    await assertManageTugas(sb, data.actor_id);
-    const { actor_id: _omit, ...row } = data;
-    const { error } = await sb.from("tugas").insert(row);
-    if (error) throw new Error(error.message);
-    await broadcastNotif(sb, {
-      judul: "Tugas baru: " + data.judul,
-      isi: data.matkul + " · deadline " + new Date(data.deadline).toLocaleString("id-ID"),
-      jenis: "tugas",
-      link: "/balai-tugas",
-      excludeAnggotaId: data.actor_id ?? null,
-    });
-    return { ok: true };
-  });
-
-export const updateTugas = createServerFn({ method: "POST" })
-  .inputValidator((input) =>
-    z
-      .object({
-        id: uuid,
-        judul: z.string().min(1).max(200),
-        matkul: z.string().min(1).max(100),
-        deadline: z.string().min(1),
-        actor_id: uuid,
-      })
-      .parse(input),
-  )
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    await assertManageTugas(sb, data.actor_id);
-    const { error } = await sb
-      .from("tugas")
-      .update({ judul: data.judul, matkul: data.matkul, deadline: data.deadline })
-      .eq("id", data.id);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
-
-export const deleteTugas = createServerFn({ method: "POST" })
-  .inputValidator((input) => z.object({ id: uuid, actor_id: uuid }).parse(input))
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    await assertManageTugas(sb, data.actor_id);
-    const { error } = await sb.from("tugas").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
-
-export const setTugasStatus = createServerFn({ method: "POST" })
-  .inputValidator((input) =>
-    z.object({
-      id: uuid,
-      status: z.enum(["belum", "dikerjakan", "selesai"]),
-      actor_id: uuid.optional(),
-    }).parse(input),
-  )
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    const { error } = await sb.from("tugas").update({ status: data.status }).eq("id", data.id);
-    if (error) throw new Error(error.message);
-    // Track who marked it done (for leaderboard) — anggota personal completion
-    if (data.status === "selesai" && data.actor_id) {
-      await sb
-        .from("tugas_completion")
-        .upsert({ tugas_id: data.id, anggota_id: data.actor_id }, { onConflict: "tugas_id,anggota_id" });
+export async function markPersonalDone(tugas_id: string, anggota_id: string, done: boolean) {
+  if (done) {
+    const existing = await getDocs(query(collection(db, "tugas_completion"), where("tugas_id", "==", tugas_id), where("anggota_id", "==", anggota_id)));
+    if (existing.empty) {
+      await addDoc(collection(db, "tugas_completion"), { tugas_id, anggota_id, completed_at: now() });
     }
-    return { ok: true };
-  });
-
-export const markPersonalDone = createServerFn({ method: "POST" })
-  .inputValidator((input) =>
-    z.object({ tugas_id: uuid, anggota_id: uuid, done: z.boolean() }).parse(input),
-  )
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    if (data.done) {
-      const { error } = await sb
-        .from("tugas_completion")
-        .upsert({ tugas_id: data.tugas_id, anggota_id: data.anggota_id }, { onConflict: "tugas_id,anggota_id" });
-      if (error) throw new Error(error.message);
-    } else {
-      const { error } = await sb
-        .from("tugas_completion")
-        .delete()
-        .eq("tugas_id", data.tugas_id)
-        .eq("anggota_id", data.anggota_id);
-      if (error) throw new Error(error.message);
-    }
-    return { ok: true };
-  });
-
-// ---------- JADWAL ----------
-export const createJadwal = createServerFn({ method: "POST" })
-  .inputValidator((input) =>
-    z
-      .object({
-        hari: z.number().int().min(1).max(7),
-        jam_mulai: z.string().min(1),
-        jam_selesai: z.string().min(1),
-        matkul: z.string().min(1).max(100),
-        ruangan: z.string().max(50).optional().nullable(),
-      })
-      .parse(input),
-  )
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    const { error } = await sb.from("jadwal").insert(data);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
-
-export const deleteJadwal = createServerFn({ method: "POST" })
-  .inputValidator((input) => z.object({ id: uuid }).parse(input))
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    const { error } = await sb.from("jadwal").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
-
-// ---------- EVENT AKADEMIK ----------
-export const createEvent = createServerFn({ method: "POST" })
-  .inputValidator((input) =>
-    z
-      .object({
-        nama: z.string().min(1).max(100),
-        tanggal_mulai: z.string().min(1),
-        tanggal_selesai: z.string().optional().nullable(),
-        jenis: z.enum(["uts", "uas", "libur", "lainnya"]),
-      })
-      .parse(input),
-  )
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    const { error } = await sb.from("event_akademik").insert(data);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
-
-// ---------- MATERI ----------
-export const createMateri = createServerFn({ method: "POST" })
-  .inputValidator((input) =>
-    z
-      .object({
-        matkul: z.string().min(1).max(100),
-        judul: z.string().min(1).max(200),
-        link: z.string().url(),
-      })
-      .parse(input),
-  )
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    const { error } = await sb.from("materi").insert(data);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
-
-// ---------- KAS ----------
-export const recordPembayaran = createServerFn({ method: "POST" })
-  .inputValidator((input) =>
-    z
-      .object({
-        periode_id: uuid,
-        anggota_id: uuid,
-        jumlah: z.number().int().min(0),
-        status: z.enum(["belum", "lunas"]),
-        actor_id: uuid,
-      })
-      .parse(input),
-  )
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    // verify actor is bendahara/yang_mulia
-    const { data: actor } = await sb.from("anggota").select("role").eq("id", data.actor_id).maybeSingle();
-    if (!actor || (actor.role !== "yang_mulia" && actor.role !== "manager")) {
-      throw new Error("Hanya Admin (Yang Mulia) yang berhak mengubah perbendaharaan.");
-    }
-    const { error } = await sb.from("kas_pembayaran").upsert(
-      {
-        periode_id: data.periode_id,
-        anggota_id: data.anggota_id,
-        status: data.status,
-        jumlah: data.status === "lunas" ? data.jumlah : 0,
-        tanggal: data.status === "lunas" ? new Date().toISOString() : null,
-      },
-      { onConflict: "periode_id,anggota_id" },
-    );
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
-
-export const recordPengeluaran = createServerFn({ method: "POST" })
-  .inputValidator((input) =>
-    z.object({
-      deskripsi: z.string().min(1).max(200),
-      jumlah: z.number().int().min(1),
-      actor_id: uuid,
-    }).parse(input),
-  )
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    const { data: actor } = await sb.from("anggota").select("role").eq("id", data.actor_id).maybeSingle();
-    if (!actor || (actor.role !== "yang_mulia" && actor.role !== "manager")) {
-      throw new Error("Hanya Admin (Yang Mulia) yang berhak mencatat pengeluaran.");
-    }
-    const { error } = await sb.from("pengeluaran").insert({ deskripsi: data.deskripsi, jumlah: data.jumlah });
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
-
-export const createKasPeriode = createServerFn({ method: "POST" })
-  .inputValidator((input) =>
-    z.object({
-      label: z.string().min(1).max(50),
-      nominal_per_orang: z.number().int().min(0),
-      actor_id: uuid,
-    }).parse(input),
-  )
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    const { data: actor } = await sb.from("anggota").select("role").eq("id", data.actor_id).maybeSingle();
-    if (!actor || (actor.role !== "yang_mulia" && actor.role !== "manager")) {
-      throw new Error("Hanya Admin (Yang Mulia) yang berhak membuat periode kas.");
-    }
-    const { data: periode, error } = await sb
-      .from("kas_periode")
-      .insert({ label: data.label, nominal_per_orang: data.nominal_per_orang })
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
-    // seed semua anggota dengan status belum
-    const { data: members } = await sb.from("anggota").select("id");
-    if (members?.length) {
-      await sb.from("kas_pembayaran").insert(
-        members.map((m) => ({
-          periode_id: periode.id,
-          anggota_id: m.id,
-          status: "belum" as const,
-          jumlah: 0,
-        })),
-      );
-    }
-    return { ok: true, id: periode.id };
-  });
-
-// ---------- FOTO ----------
-export const createFoto = createServerFn({ method: "POST" })
-  .inputValidator((input) =>
-    z
-      .object({
-        // bisa URL eksternal (legacy) atau storage path "kenangan/..."
-        url: z.string().min(1).max(500),
-        caption: z.string().max(200).optional().nullable(),
-        uploader_id: uuid.optional().nullable(),
-      })
-      .parse(input),
-  )
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    const { error } = await sb.from("foto").insert(data);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
-
-// ---------- FORUM ----------
-export const createForumTopik = createServerFn({ method: "POST" })
-  .inputValidator((input) =>
-    z
-      .object({
-        judul: z.string().min(1).max(200),
-        isi: z.string().min(1).max(4000),
-        author_id: uuid,
-      })
-      .parse(input),
-  )
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    const { data: row, error } = await sb.from("forum_topik").insert(data).select().single();
-    if (error) throw new Error(error.message);
-    return { ok: true, id: row.id };
-  });
-
-export const createForumBalasan = createServerFn({ method: "POST" })
-  .inputValidator((input) =>
-    z
-      .object({
-        topik_id: uuid,
-        isi: z.string().min(1).max(4000),
-        author_id: uuid,
-      })
-      .parse(input),
-  )
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    const { error } = await sb.from("forum_balasan").insert(data);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
-
-// ---------- ANGGOTA ----------
-export const createAnggota = createServerFn({ method: "POST" })
-  .inputValidator((input) =>
-    z
-      .object({
-        nama: z.string().min(1).max(100),
-        foto_url: z.string().url().optional().nullable(),
-        role: z.enum(["yang_mulia", "bendahara", "sekretaris", "bangsawan"]),
-        ig: z.string().max(50).optional().nullable(),
-        tiktok: z.string().max(50).optional().nullable(),
-        wa: z.string().max(30).optional().nullable(),
-        actor_id: uuid,
-      })
-      .parse(input),
-  )
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    const { data: actor } = await sb.from("anggota").select("role").eq("id", data.actor_id).maybeSingle();
-    if (!actor || !["yang_mulia", "sekretaris", "manager"].includes(actor.role)) {
-      throw new Error("Hanya Yang Mulia atau Sekretaris yang berhak menambah Bangsawan.");
-    }
-    const { actor_id: _omit, ...row } = data;
-    const { error } = await sb.from("anggota").insert(row);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
-
-// ---------- NOTIFIKASI helpers ----------
-async function broadcastNotif(
-  sb: Awaited<ReturnType<typeof admin>>,
-  payload: { judul: string; isi?: string | null; jenis: string; link?: string | null; excludeAnggotaId?: string | null },
-) {
-  const { data: members } = await sb.from("anggota").select("id");
-  if (!members?.length) return;
-  const rows = members
-    .filter((m) => m.id !== payload.excludeAnggotaId)
-    .map((m) => ({
-      anggota_id: m.id,
-      judul: payload.judul,
-      isi: payload.isi ?? null,
-      jenis: payload.jenis,
-      link: payload.link ?? null,
-    }));
-  if (rows.length) await sb.from("notifikasi").insert(rows);
-}
-
-export const markNotifRead = createServerFn({ method: "POST" })
-  .inputValidator((input) => z.object({ id: uuid, anggota_id: uuid }).parse(input))
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    await sb.from("notifikasi").update({ terbaca: true }).eq("id", data.id).eq("anggota_id", data.anggota_id);
-    return { ok: true };
-  });
-
-export const markAllNotifRead = createServerFn({ method: "POST" })
-  .inputValidator((input) => z.object({ anggota_id: uuid }).parse(input))
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    await sb.from("notifikasi").update({ terbaca: true }).eq("anggota_id", data.anggota_id).eq("terbaca", false);
-    return { ok: true };
-  });
-
-// ---------- POLLING ----------
-async function assertManagePolling(sb: Awaited<ReturnType<typeof admin>>, actor_id: string) {
-  const { data: actor } = await sb.from("anggota").select("role").eq("id", actor_id).maybeSingle();
-  if (!actor || !["yang_mulia", "sekretaris", "manager"].includes(actor.role)) {
-    throw new Error("Hanya Yang Mulia / Sekretaris yang berhak mengelola polling.");
+  } else {
+    const snap = await getDocs(query(collection(db, "tugas_completion"), where("tugas_id", "==", tugas_id), where("anggota_id", "==", anggota_id)));
+    await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
   }
 }
 
-export const createPolling = createServerFn({ method: "POST" })
-  .inputValidator((input) =>
-    z.object({
-      pertanyaan: z.string().min(1).max(200),
-      deskripsi: z.string().max(2000).optional().nullable(),
-      multi: z.boolean().optional(),
-      batas_waktu: z.string().optional().nullable(),
-      pilihan: z.array(z.string().min(1).max(120)).min(2).max(10),
-      actor_id: uuid,
-    }).parse(input),
-  )
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    await assertManagePolling(sb, data.actor_id);
-    const { data: poll, error } = await sb
-      .from("polling")
-      .insert({
-        pertanyaan: data.pertanyaan,
-        deskripsi: data.deskripsi ?? null,
-        multi: !!data.multi,
-        batas_waktu: data.batas_waktu ?? null,
-        author_id: data.actor_id,
-      })
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
-    const rows = data.pilihan.map((teks, i) => ({ polling_id: poll.id, teks, urutan: i }));
-    const { error: e2 } = await sb.from("pilihan_polling").insert(rows);
-    if (e2) throw new Error(e2.message);
-    await broadcastNotif(sb, {
-      judul: "Polling baru: " + data.pertanyaan,
-      isi: "Sampaikan suaramu di Balai Suara.",
-      jenis: "polling",
-      link: "/polling",
-      excludeAnggotaId: data.actor_id,
-    });
-    return { ok: true, id: poll.id };
-  });
+// ─── JADWAL ────────────────────────────────────────────────────
+export async function createJadwal(data: { hari: number; jam_mulai: string; jam_selesai: string; matkul: string; ruangan?: string | null; dosen?: string | null }) {
+  await addDoc(collection(db, "jadwal"), { ...data, created_at: now() });
+}
 
-export const deletePolling = createServerFn({ method: "POST" })
-  .inputValidator((input) => z.object({ id: uuid, actor_id: uuid }).parse(input))
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    await assertManagePolling(sb, data.actor_id);
-    const { error } = await sb.from("polling").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
+export async function deleteJadwal(id: string) {
+  await deleteDoc(doc(db, "jadwal", id));
+}
 
-export const togglePollingTutup = createServerFn({ method: "POST" })
-  .inputValidator((input) => z.object({ id: uuid, ditutup: z.boolean(), actor_id: uuid }).parse(input))
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    await assertManagePolling(sb, data.actor_id);
-    const { error } = await sb.from("polling").update({ ditutup: data.ditutup }).eq("id", data.id);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
+// ─── EVENT AKADEMIK ────────────────────────────────────────────
+export async function createEvent(data: { nama: string; tanggal_mulai: string; tanggal_selesai?: string | null; jenis: EventJenis }) {
+  await addDoc(collection(db, "event_akademik"), { ...data, created_at: now() });
+}
 
-export const castVote = createServerFn({ method: "POST" })
-  .inputValidator((input) =>
-    z.object({
-      polling_id: uuid,
-      pilihan_ids: z.array(uuid).min(1).max(10),
-      anggota_id: uuid,
-    }).parse(input),
-  )
-  .handler(async ({ data }) => {
-    const sb = await admin();
-    const { data: poll } = await sb
-      .from("polling")
-      .select("ditutup, batas_waktu, multi")
-      .eq("id", data.polling_id)
-      .maybeSingle();
-    if (!poll) throw new Error("Polling tidak ditemukan.");
-    if (poll.ditutup) throw new Error("Polling sudah ditutup.");
-    if (poll.batas_waktu && new Date(poll.batas_waktu) < new Date()) {
-      throw new Error("Batas waktu polling sudah lewat.");
-    }
-    if (!poll.multi && data.pilihan_ids.length > 1) {
-      throw new Error("Polling ini hanya menerima satu pilihan.");
-    }
-    await sb.from("vote").delete().eq("polling_id", data.polling_id).eq("anggota_id", data.anggota_id);
-    const rows = data.pilihan_ids.map((pilihan_id) => ({
-      polling_id: data.polling_id,
-      pilihan_id,
-      anggota_id: data.anggota_id,
-    }));
-    const { error } = await sb.from("vote").insert(rows);
-    if (error) throw new Error(error.message);
-    return { ok: true };
+export async function deleteEvent(id: string) {
+  await deleteDoc(doc(db, "event_akademik", id));
+}
+
+// ─── MATERI ────────────────────────────────────────────────────
+export async function createMateri(data: { matkul: string; judul: string; link: string }) {
+  await addDoc(collection(db, "materi"), { ...data, created_at: now() });
+}
+
+export async function deleteMateri(id: string) {
+  await deleteDoc(doc(db, "materi", id));
+}
+
+// ─── KAS ───────────────────────────────────────────────────────
+export async function createKasPeriode(data: { label: string; nominal_per_orang: number }) {
+  const ref = await addDoc(collection(db, "kas_periode"), { ...data, created_at: now() });
+  // Seed all members with "belum" status
+  const membersSnap = await getDocs(collection(db, "anggota"));
+  const batch = writeBatch(db);
+  membersSnap.docs.forEach((d) => {
+    const payRef = doc(collection(db, "kas_pembayaran"));
+    batch.set(payRef, { periode_id: ref.id, anggota_id: d.id, status: "belum", jumlah: 0, tanggal: null });
   });
+  await batch.commit();
+  return ref.id;
+}
+
+export async function recordPembayaran(data: { periode_id: string; anggota_id: string; jumlah: number; status: KasStatus }) {
+  const existing = await getDocs(query(collection(db, "kas_pembayaran"), where("periode_id", "==", data.periode_id), where("anggota_id", "==", data.anggota_id)));
+  const payload = {
+    periode_id: data.periode_id, anggota_id: data.anggota_id,
+    status: data.status, jumlah: data.status === "lunas" ? data.jumlah : 0,
+    tanggal: data.status === "lunas" ? now() : null,
+  };
+  if (existing.empty) {
+    await addDoc(collection(db, "kas_pembayaran"), payload);
+  } else {
+    await updateDoc(existing.docs[0].ref, payload);
+  }
+}
+
+export async function recordPengeluaran(data: { deskripsi: string; jumlah: number }) {
+  await addDoc(collection(db, "pengeluaran"), { ...data, tanggal: now(), created_at: now() });
+}
+
+// ─── FOTO ──────────────────────────────────────────────────────
+export async function createFoto(data: { url: string; caption?: string | null; uploader_id?: string | null }) {
+  await addDoc(collection(db, "foto"), { ...data, tanggal: now(), created_at: now() });
+}
+
+export async function deleteFoto(id: string) {
+  await deleteDoc(doc(db, "foto", id));
+}
+
+// ─── FORUM ─────────────────────────────────────────────────────
+export async function createForumTopik(data: { judul: string; isi: string; author_id: string }) {
+  const ref = await addDoc(collection(db, "forum_topik"), { ...data, created_at: now() });
+  return ref.id;
+}
+
+export async function createForumBalasan(data: { topik_id: string; isi: string; author_id: string }) {
+  await addDoc(collection(db, "forum_balasan"), { ...data, created_at: now() });
+}
+
+// ─── ANGGOTA ───────────────────────────────────────────────────
+export async function createAnggota(data: {
+  nama: string; role: AnggotaRole; foto_url?: string | null;
+  ig?: string | null; tiktok?: string | null; wa?: string | null;
+  email?: string | null; nim?: string | null; panggilan?: string | null;
+}) {
+  await addDoc(collection(db, "anggota"), { ...data, firebaseUid: null, urutan: null, created_at: now() });
+}
+
+export async function updateAnggota(id: string, data: Partial<{
+  nama: string; panggilan: string; role: AnggotaRole; email: string;
+  nim: string; wa: string; ig: string; tiktok: string; foto_url: string;
+  tempat_lahir: string; tgl_lahir: string; hobi: string; motto: string;
+}>) {
+  await updateDoc(doc(db, "anggota", id), data);
+}
+
+export async function deleteAnggota(id: string) {
+  await deleteDoc(doc(db, "anggota", id));
+}
+
+// ─── NOTIFIKASI ────────────────────────────────────────────────
+export async function markNotifRead(id: string, anggota_id: string) {
+  const snap = await getDocs(query(collection(db, "notifikasi"), where("anggota_id", "==", anggota_id)));
+  const target = snap.docs.find((d) => d.id === id);
+  if (target) await updateDoc(target.ref, { terbaca: true });
+}
+
+export async function markAllNotifRead(anggota_id: string) {
+  const snap = await getDocs(query(collection(db, "notifikasi"), where("anggota_id", "==", anggota_id), where("terbaca", "==", false)));
+  const batch = writeBatch(db);
+  snap.docs.forEach((d) => batch.update(d.ref, { terbaca: true }));
+  await batch.commit();
+}
+
+// ─── POLLING ───────────────────────────────────────────────────
+export async function createPolling(data: {
+  pertanyaan: string; deskripsi?: string | null; multi?: boolean;
+  batas_waktu?: string | null; pilihan: string[]; actor_id: string;
+}) {
+  const { pilihan, actor_id, ...pollData } = data;
+  const ref = await addDoc(collection(db, "polling"), { ...pollData, multi: data.multi ?? false, ditutup: false, author_id: actor_id, created_at: now() });
+  const batch = writeBatch(db);
+  pilihan.forEach((teks, i) => {
+    const pRef = doc(collection(db, "pilihan_polling"));
+    batch.set(pRef, { polling_id: ref.id, teks, urutan: i });
+  });
+  await batch.commit();
+  await broadcastNotif({ judul: "Polling baru: " + data.pertanyaan, isi: "Sampaikan suaramu di Balai Suara.", jenis: "polling", link: "/polling", excludeAnggotaId: actor_id });
+  return ref.id;
+}
+
+export async function deletePolling(id: string) {
+  await deleteDoc(doc(db, "polling", id));
+}
+
+export async function togglePollingTutup(id: string, ditutup: boolean) {
+  await updateDoc(doc(db, "polling", id), { ditutup });
+}
+
+export async function castVote(data: { polling_id: string; pilihan_ids: string[]; anggota_id: string }) {
+  // Remove existing votes for this poll by this user
+  const existingSnap = await getDocs(query(collection(db, "vote"), where("polling_id", "==", data.polling_id), where("anggota_id", "==", data.anggota_id)));
+  const batch = writeBatch(db);
+  existingSnap.docs.forEach((d) => batch.delete(d.ref));
+  data.pilihan_ids.forEach((pilihan_id) => {
+    const ref = doc(collection(db, "vote"));
+    batch.set(ref, { polling_id: data.polling_id, pilihan_id, anggota_id: data.anggota_id, created_at: now() });
+  });
+  await batch.commit();
+}
+
+// ─── ABSEN SHARE ───────────────────────────────────────────────
+export async function shareAbsenLink(data: { jadwal_id: string; tanggal: string; link: string; shared_by: string }) {
+  const nowIso = new Date().toISOString();
+  const existing = await getDocs(query(collection(db, "absen_share"), where("jadwal_id", "==", data.jadwal_id), where("tanggal", "==", data.tanggal)));
+  if (!existing.empty) {
+    const ex = existing.docs[0].data();
+    if (ex.expires_at > nowIso) throw new Error("Yah, ada yang sudah duluan share link absen sesi ini!");
+    await deleteDoc(existing.docs[0].ref);
+  }
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  await addDoc(collection(db, "absen_share"), { ...data, expires_at: expiresAt, created_at: now() });
+  return expiresAt;
+}
+
+export async function deleteAbsenShare(id: string) {
+  await deleteDoc(doc(db, "absen_share", id));
+}

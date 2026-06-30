@@ -51,8 +51,6 @@ function ParaBangsawan() {
   const { data: anggota } = useQuery(anggotaListQuery);
   const { member } = useActiveMember();
   const canManage = canManageMembers(member?.role);
-  const fn = useServerFn(createAnggota);
-
   const mut = useMutation({
     mutationFn: (input: {
       nama: string;
@@ -61,8 +59,7 @@ function ParaBangsawan() {
       ig?: string | null;
       tiktok?: string | null;
       wa?: string | null;
-      actor_id: string;
-    }) => fn({ data: input }),
+    }) => createAnggota(input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["anggota"] });
       toast.success("Bangsawan baru disambut di kerajaan.");
@@ -81,7 +78,7 @@ function ParaBangsawan() {
           </p>
         </div>
         {canManage && member && (
-          <TambahDialog onSubmit={(d) => mut.mutate({ ...d, actor_id: member.id })} />
+          <TambahDialog onSubmit={(d) => mut.mutate(d)} />
         )}
       </header>
 

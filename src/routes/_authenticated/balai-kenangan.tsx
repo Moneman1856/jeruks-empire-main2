@@ -1,12 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Plus, Loader2 } from "lucide-react";
 import { fotoListQuery } from "@/lib/queries";
 import { createFoto } from "@/lib/empire.functions";
 import { useActiveMember } from "@/lib/active-member";
-import { supabase } from "@/integrations/supabase/client";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { storage } from "@/integrations/firebase/client";
 import { EmptyState } from "@/components/empire/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,9 +21,6 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 
-const BUCKET = "kenangan";
-const isExternalUrl = (s: string) => /^https?:\/\//i.test(s);
-
 export const Route = createFileRoute("/_authenticated/balai-kenangan")({
   head: () => ({
     meta: [
@@ -36,47 +33,15 @@ export const Route = createFileRoute("/_authenticated/balai-kenangan")({
   component: BalaiKenangan,
 });
 
-function useResolvedFotoUrls(items: Array<{ id: string; url: string }> | undefined) {
-  const paths = useMemo(
-    () => (items ?? []).filter((f) => !isExternalUrl(f.url)).map((f) => f.url),
-    [items],
-  );
-
-  const queries = useQueries({
-    queries: paths.map((path) => ({
-      queryKey: ["foto-signed", path],
-      staleTime: 1000 * 60 * 45, // 45 menit (link 1 jam)
-      queryFn: async () => {
-        const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 60 * 60);
-        if (error) throw error;
-        return data.signedUrl;
-      },
-    })),
-  });
-
-  return useMemo(() => {
-    const map = new Map<string, string>();
-    paths.forEach((p, i) => {
-      const q = queries[i];
-      if (q?.data) map.set(p, q.data);
-    });
-    return map;
-  }, [paths, queries]);
-}
-
 function BalaiKenangan() {
   const qc = useQueryClient();
   const { member } = useActiveMember();
   const { data: foto } = useQuery(fotoListQuery);
-  const fn = useServerFn(createFoto);
-  const signedMap = useResolvedFotoUrls(foto);
   const [preview, setPreview] = useState<{ url: string; caption?: string | null } | null>(null);
-
-  const resolveSrc = (raw: string) => (isExternalUrl(raw) ? raw : signedMap.get(raw) ?? "");
 
   const mut = useMutation({
     mutationFn: (input: { url: string; caption?: string | null; uploader_id?: string | null }) =>
-      fn({ data: input }),
+      createFoto(input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["foto"] });
       toast.success("Kenangan tersimpan di Balai.");
@@ -97,16 +62,15 @@ function BalaiKenangan() {
       {foto && foto.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           {foto.map((f) => {
-            const src = resolveSrc(f.url);
             return (
               <button
                 key={f.id}
-                onClick={() => src && setPreview({ url: src, caption: f.caption })}
+                onClick={() => f.url && setPreview({ url: f.url, caption: f.caption })}
                 className="group relative aspect-square overflow-hidden rounded-xl border bg-cream"
               >
-                {src ? (
+                {f.url ? (
                   <img
-                    src={src}
+                    src={f.url}
                     alt={f.caption ?? ""}
                     className="size-full object-cover transition group-hover:scale-105"
                     loading="lazy"
@@ -183,14 +147,11 @@ function TambahFotoDialog({
     setUploading(true);
     try {
       const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-      const path = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${ext}`;
-      const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
-        cacheControl: "3600",
-        upsert: false,
-        contentType: file.type,
-      });
-      if (error) throw error;
-      onSubmit({ url: path, caption: caption || null });
+      const path = `kenangan/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${ext}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, file);
+      const downloadUrl = await getDownloadURL(storageRef);
+      onSubmit({ url: downloadUrl, caption: caption || null });
       setOpen(false);
       reset();
     } catch (e) {
@@ -226,7 +187,7 @@ function TambahFotoDialog({
               onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Disimpan aman di kerajaan (private bucket, signed URL).
+              Disimpan aman di Firebase Storage.
             </p>
             {previewUrl && (
               <img

@@ -2,10 +2,10 @@ import { useEffect, useMemo } from "react";
 import { Bell, Check } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
 import { useActiveMember } from "@/lib/active-member";
 import { notifikasiListQuery } from "@/lib/queries";
-import { supabase } from "@/integrations/supabase/client";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { db } from "@/integrations/firebase/client";
 import { markNotifRead, markAllNotifRead } from "@/lib/empire.functions";
 import {
   DropdownMenu,
@@ -39,32 +39,22 @@ export function NotifBell() {
   const navigate = useNavigate();
   const memberId = member?.id ?? null;
   const { data: list = [] } = useQuery(notifikasiListQuery(memberId));
-  const markRead = useServerFn(markNotifRead);
-  const markAll = useServerFn(markAllNotifRead);
 
   const unread = useMemo(() => list.filter((n) => !n.terbaca).length, [list]);
 
   useEffect(() => {
     if (!memberId) return;
-    const ch = supabase
-      .channel(`notif:${memberId}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "notifikasi", filter: `anggota_id=eq.${memberId}` },
-        () => {
-          qc.invalidateQueries({ queryKey: ["notifikasi", memberId] });
-        },
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(ch);
-    };
+    const q = query(collection(db, "notifikasi"), where("anggota_id", "==", memberId));
+    const unsub = onSnapshot(q, () => {
+      qc.invalidateQueries({ queryKey: ["notifikasi", memberId] });
+    });
+    return unsub;
   }, [memberId, qc]);
 
   const readMutation = useMutation({
     mutationFn: async (id: string) => {
       if (!memberId) return;
-      await markRead({ data: { id, anggota_id: memberId } });
+      await markNotifRead(id, memberId);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifikasi", memberId] }),
   });
@@ -72,7 +62,7 @@ export function NotifBell() {
   const readAllMutation = useMutation({
     mutationFn: async () => {
       if (!memberId) return;
-      await markAll({ data: { anggota_id: memberId } });
+      await markAllNotifRead(memberId);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifikasi", memberId] }),
   });

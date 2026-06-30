@@ -1,17 +1,23 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect } from "react";
+import {
+  isSignInWithEmailLink,
+  sendSignInLinkToEmail,
+  signInWithEmailLink,
+} from "firebase/auth";
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { auth, db } from "@/integrations/firebase/client";
 import { Crest } from "@/components/empire/Crest";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Mail, KeyRound, ArrowLeft, Loader2 } from "lucide-react";
+import { Mail, Loader2, CheckCircle2 } from "lucide-react";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
   beforeLoad: async () => {
-    const { data } = await supabase.auth.getUser();
-    if (data.user) throw redirect({ to: "/" });
+    const { auth: fbAuth } = await import("@/integrations/firebase/client");
+    if (fbAuth.currentUser) throw redirect({ to: "/" });
   },
   head: () => ({
     meta: [
@@ -22,51 +28,59 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
-type Step = "email" | "otp";
+const EMAIL_KEY = "jeruks_signin_email";
 
 function AuthPage() {
-  const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [verifying, setVerifying] = useState(false);
 
-  /* ── LANGKAH 1: Kirim OTP setelah cek email di tabel anggota ── */
-  const kirimOtp = async (e: React.FormEvent) => {
+  // Handle magic link return (when user clicks email link)
+  useEffect(() => {
+    if (!isSignInWithEmailLink(auth, window.location.href)) return;
+    const savedEmail = window.localStorage.getItem(EMAIL_KEY);
+    if (!savedEmail) return;
+
+    setVerifying(true);
+    signInWithEmailLink(auth, savedEmail, window.location.href)
+      .then(() => {
+        window.localStorage.removeItem(EMAIL_KEY);
+        toast.success("Selamat datang, Bangsawan!");
+        window.location.href = "/";
+      })
+      .catch((err) => {
+        toast.error("Link tidak valid atau sudah kadaluarsa: " + err.message);
+        setVerifying(false);
+      });
+  }, []);
+
+  const kirimLink = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
-
     setLoading(true);
     try {
-      // Cek apakah email terdaftar di silsilah kerajaan
-      const { data: anggota, error: cekError } = await supabase
-        .from("anggota")
-        .select("id, nama")
-        .ilike("email", email.trim())
-        .maybeSingle();
-
-      if (cekError) throw cekError;
-
-      if (!anggota) {
-        toast.error(
-          "Email tidak ditemukan dalam daftar bangsawan. Hubungi Admin untuk didaftarkan.",
-          { duration: 5000 }
-        );
+      // Cek email terdaftar di Firestore anggota
+      const snap = await getDocs(
+        query(collection(db, "anggota"), where("email", "==", email.trim().toLowerCase()))
+      );
+      if (snap.empty) {
+        toast.error("Email tidak ditemukan dalam daftar bangsawan. Hubungi Admin.", {
+          duration: 5000,
+        });
         setLoading(false);
         return;
       }
 
-      // Email cocok → kirim OTP via Supabase
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
-        options: {
-          shouldCreateUser: true, // buat akun auth jika belum ada
-        },
-      });
+      const actionCodeSettings = {
+        url: window.location.origin + "/auth",
+        handleCodeInApp: true,
+      };
 
-      if (error) throw error;
-
-      toast.success(`Kode masuk dikirim ke ${email}. Periksa kotak masuk (atau spam).`);
-      setStep("otp");
+      await sendSignInLinkToEmail(auth, email.trim(), actionCodeSettings);
+      window.localStorage.setItem(EMAIL_KEY, email.trim());
+      setSent(true);
+      toast.success(`Link masuk dikirim ke ${email}. Periksa kotak masuk (atau spam).`);
     } catch (err) {
       toast.error("Gagal: " + (err as Error).message);
     } finally {
@@ -74,53 +88,37 @@ function AuthPage() {
     }
   };
 
-  /* ── LANGKAH 2: Verifikasi OTP ── */
-  const verifikasiOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otp.trim()) return;
-
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.verifyOtp({
-        email: email.trim(),
-        token: otp.trim(),
-        type: "email",
-      });
-
-      if (error) throw error;
-
-      toast.success("Selamat datang, Bangsawan!");
-      window.location.href = "/";
-    } catch (err) {
-      toast.error("Kode salah atau kedaluwarsa: " + (err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (verifying) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-b from-cream via-background to-cream">
+        <div className="text-center space-y-4">
+          <Crest size={72} />
+          <p className="text-muted-foreground animate-pulse">Membuka gerbang kerajaan…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-b from-cream via-background to-cream">
       <div className="max-w-sm w-full text-center space-y-6">
-        {/* Logo */}
         <div className="flex justify-center">
           <Crest size={88} />
         </div>
 
-        {/* Judul */}
         <div>
           <h1 className="font-display text-4xl tracking-tight">
             <span className="text-empire">JERUK'S</span> EMPIRE
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {step === "email"
-              ? "Masukkan email bangsawan untuk menerima kode masuk."
-              : `Kode 6 digit dikirim ke ${email}`}
+            {sent
+              ? "Periksa email kamu dan klik link yang dikirim."
+              : "Masukkan email bangsawan untuk menerima link masuk."}
           </p>
         </div>
 
-        {/* ── Form Email ── */}
-        {step === "email" && (
-          <form onSubmit={kirimOtp} className="space-y-3">
+        {!sent ? (
+          <form onSubmit={kirimLink} className="space-y-3">
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
               <Input
@@ -139,46 +137,25 @@ function AuthPage() {
               {loading ? (
                 <><Loader2 className="size-4 animate-spin" /> Memeriksa silsilah…</>
               ) : (
-                <><Mail className="size-4" /> Kirim Kode Masuk</>
+                <><Mail className="size-4" /> Kirim Link Masuk</>
               )}
             </Button>
           </form>
-        )}
-
-        {/* ── Form OTP ── */}
-        {step === "otp" && (
-          <form onSubmit={verifikasiOtp} className="space-y-3">
-            <div className="relative">
-              <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
-              <Input
-                id="auth-otp"
-                type="text"
-                inputMode="numeric"
-                placeholder="123456"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                required
-                disabled={loading}
-                autoComplete="one-time-code"
-                className="pl-9 tracking-widest text-center font-mono text-lg"
-                maxLength={6}
-              />
-            </div>
-            <Button type="submit" disabled={loading || otp.length < 6} size="lg" className="w-full gap-2">
-              {loading ? (
-                <><Loader2 className="size-4 animate-spin" /> Membuka gerbang…</>
-              ) : (
-                <><KeyRound className="size-4" /> Masuk ke Kerajaan</>
-              )}
-            </Button>
+        ) : (
+          <div className="rounded-2xl border bg-card p-6 space-y-3">
+            <CheckCircle2 className="size-10 text-empire mx-auto" />
+            <p className="text-sm font-medium">Link dikirim ke</p>
+            <p className="font-mono text-sm text-empire break-all">{email}</p>
+            <p className="text-xs text-muted-foreground">
+              Klik link di email untuk masuk. Cek folder spam jika tidak muncul.
+            </p>
             <button
-              type="button"
-              onClick={() => { setStep("email"); setOtp(""); }}
-              className="flex items-center gap-1.5 mx-auto text-xs text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => { setSent(false); setEmail(""); }}
+              className="text-xs text-muted-foreground underline hover:text-foreground"
             >
-              <ArrowLeft className="size-3" /> Ganti email
+              Ganti email
             </button>
-          </form>
+          </div>
         )}
 
         <p className="text-xs text-muted-foreground leading-relaxed">

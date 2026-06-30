@@ -1,10 +1,12 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Shield, UserPlus, X, Crown, Pencil } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { Shield, Crown, Pencil } from "lucide-react";
+import { auth, db } from "@/integrations/firebase/client";
+import { query, collection, where, getDocs } from "firebase/firestore";
 import { useActiveMember, isAdmin } from "@/lib/active-member";
-import { anggotaListQuery, pendingAksesListQuery } from "@/lib/queries";
+import { anggotaListQuery } from "@/lib/queries";
+import { updateAnggota } from "@/lib/empire.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,12 +24,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { EmptyState } from "@/components/empire/EmptyState";
 import { toast } from "sonner";
-import type { Database } from "@/integrations/supabase/types";
-
-type Anggota = Database["public"]["Tables"]["anggota"]["Row"];
-type Pending = Database["public"]["Tables"]["pending_akses"]["Row"];
+import type { Anggota } from "@/integrations/firebase/types";
 
 const ROLE_LABEL: Record<string, string> = {
   manager: "Manager (Admin)",
@@ -39,14 +37,15 @@ const ROLE_LABEL: Record<string, string> = {
 
 export const Route = createFileRoute("/_authenticated/admin")({
   beforeLoad: async () => {
-    const { data: user } = await supabase.auth.getUser();
-    if (!user.user) throw redirect({ to: "/auth" });
-    const { data: anggota } = await supabase
-      .from("anggota")
-      .select("role")
-      .eq("user_id", user.user.id)
-      .maybeSingle();
-    if (!anggota || (anggota.role !== "manager" && anggota.role !== "yang_mulia")) {
+    const { auth: fbAuth, db: fbDb } = await import("@/integrations/firebase/client");
+    const user = fbAuth.currentUser;
+    if (!user) throw redirect({ to: "/auth" });
+    const { query, collection, where, getDocs } = await import("firebase/firestore");
+    const q = query(collection(fbDb, "anggota"), where("firebaseUid", "==", user.uid));
+    const snap = await getDocs(q);
+    if (snap.empty) throw redirect({ to: "/" });
+    const role = snap.docs[0].data().role;
+    if (role !== "manager" && role !== "yang_mulia") {
       throw redirect({ to: "/" });
     }
   },
@@ -62,8 +61,6 @@ export const Route = createFileRoute("/_authenticated/admin")({
 function AdminPage() {
   const { member } = useActiveMember();
   const { data: anggotaList = [] } = useQuery(anggotaListQuery);
-  const { data: pending = [] } = useQuery(pendingAksesListQuery);
-  const [linkTarget, setLinkTarget] = useState<Pending | null>(null);
   const [editTarget, setEditTarget] = useState<Anggota | null>(null);
 
   if (!isAdmin(member?.role)) return null;
@@ -75,46 +72,9 @@ function AdminPage() {
           <Shield className="size-7 text-plum" /> Balai Admin
         </h1>
         <p className="text-sm text-muted-foreground">
-          Kelola permintaan akses dan data bangsawan kerajaan.
+          Kelola data bangsawan kerajaan.
         </p>
       </header>
-
-      {/* Pending */}
-      <section className="rounded-2xl border bg-card overflow-hidden">
-        <div className="px-4 py-3 bg-plum/10 border-b">
-          <h2 className="font-display text-xl text-plum">
-            Menanti Persetujuan ({pending.length})
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Akun Google yang masuk tapi belum terdaftar sebagai bangsawan.
-          </p>
-        </div>
-        {pending.length === 0 ? (
-          <div className="p-4">
-            <EmptyState title="Tak ada yang menunggu di gerbang." />
-          </div>
-        ) : (
-          <ul className="divide-y divide-border/60">
-            {pending.map((p) => (
-              <li key={p.id} className="flex items-center gap-3 px-4 py-3">
-                {p.foto_google ? (
-                  <img src={p.foto_google} alt="" className="size-10 rounded-full object-cover" />
-                ) : (
-                  <div className="size-10 rounded-full bg-cream" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{p.nama_google ?? "Tanpa nama"}</div>
-                  <div className="text-xs text-muted-foreground truncate font-mono">{p.email}</div>
-                </div>
-                <Button size="sm" onClick={() => setLinkTarget(p)} className="gap-1">
-                  <UserPlus className="size-3.5" /> Tautkan
-                </Button>
-                <RejectButton pending={p} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
 
       {/* Anggota */}
       <section className="rounded-2xl border bg-card overflow-hidden">
@@ -130,8 +90,8 @@ function AdminPage() {
               {a.foto_url ? (
                 <img src={a.foto_url} alt="" className="size-10 rounded-full object-cover bg-cream" />
               ) : (
-                <div className="size-10 rounded-full bg-cream flex items-center justify-center text-xs text-muted-foreground">
-                  {a.urutan ?? "?"}
+                <div className="size-10 rounded-full bg-cream flex items-center justify-center text-xs text-muted-foreground font-bold">
+                  {a.panggilan ? a.panggilan.slice(0, 2).toUpperCase() : "?"}
                 </div>
               )}
               <div className="flex-1 min-w-0">
@@ -143,7 +103,7 @@ function AdminPage() {
                 <div className="text-xs text-muted-foreground truncate">
                   {ROLE_LABEL[a.role]}
                   {a.email && ` · ${a.email}`}
-                  {a.user_id ? " · ✓ tertaut" : " · belum tertaut"}
+                  {a.firebaseUid ? " · ✓ tertaut" : " · belum tertaut"}
                 </div>
               </div>
               <Button size="sm" variant="outline" onClick={() => setEditTarget(a)} className="gap-1">
@@ -154,113 +114,8 @@ function AdminPage() {
         </ul>
       </section>
 
-      {linkTarget && (
-        <LinkDialog
-          pending={linkTarget}
-          anggotaList={anggotaList.filter((a) => !a.user_id)}
-          onClose={() => setLinkTarget(null)}
-        />
-      )}
       {editTarget && <EditDialog anggota={editTarget} onClose={() => setEditTarget(null)} />}
     </div>
-  );
-}
-
-function RejectButton({ pending }: { pending: Pending }) {
-  const qc = useQueryClient();
-  const mut = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from("pending_akses").delete().eq("id", pending.id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["pending_akses"] });
-      toast.success("Permintaan ditolak.");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  return (
-    <Button
-      size="icon"
-      variant="ghost"
-      onClick={() => mut.mutate()}
-      disabled={mut.isPending}
-      className="text-destructive"
-      title="Tolak permintaan"
-    >
-      <X className="size-4" />
-    </Button>
-  );
-}
-
-function LinkDialog({
-  pending,
-  anggotaList,
-  onClose,
-}: {
-  pending: Pending;
-  anggotaList: Anggota[];
-  onClose: () => void;
-}) {
-  const qc = useQueryClient();
-  const [selected, setSelected] = useState<string>("");
-
-  const mut = useMutation({
-    mutationFn: async () => {
-      if (!selected) throw new Error("Pilih kursi dulu.");
-      const { error: e1 } = await supabase
-        .from("anggota")
-        .update({ user_id: pending.user_id, email: pending.email })
-        .eq("id", selected);
-      if (e1) throw e1;
-      const { error: e2 } = await supabase.from("pending_akses").delete().eq("id", pending.id);
-      if (e2) throw e2;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["pending_akses"] });
-      qc.invalidateQueries({ queryKey: ["anggota"] });
-      toast.success(`${pending.email} telah tertaut ke kursi.`);
-      onClose();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="font-display text-empire">Tautkan Akun ke Kursi</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="rounded-lg bg-muted/40 p-3 text-sm">
-            <div className="font-medium">{pending.nama_google ?? "Tanpa nama"}</div>
-            <div className="text-xs text-muted-foreground font-mono">{pending.email}</div>
-          </div>
-          <div>
-            <Label>Pilih kursi kosong</Label>
-            <Select value={selected} onValueChange={setSelected}>
-              <SelectTrigger><SelectValue placeholder="— pilih bangsawan —" /></SelectTrigger>
-              <SelectContent>
-                {anggotaList.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.nama} ({ROLE_LABEL[a.role]})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground mt-1">
-              Hanya kursi yang belum tertaut akun yang muncul.
-            </p>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Batal</Button>
-          <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
-            Tautkan
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -284,15 +139,11 @@ function EditDialog({ anggota, onClose }: { anggota: Anggota; onClose: () => voi
 
   const mut = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
-        .from("anggota")
-        .update({
-          ...form,
-          email: form.email || null,
-          tgl_lahir: form.tgl_lahir || null,
-        })
-        .eq("id", anggota.id);
-      if (error) throw error;
+      await updateAnggota(anggota.id, {
+        ...form,
+        email: form.email || null,
+        tgl_lahir: form.tgl_lahir || null,
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["anggota"] });
@@ -304,15 +155,11 @@ function EditDialog({ anggota, onClose }: { anggota: Anggota; onClose: () => voi
 
   const unlink = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
-        .from("anggota")
-        .update({ user_id: null })
-        .eq("id", anggota.id);
-      if (error) throw error;
+      await updateAnggota(anggota.id, { firebaseUid: null });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["anggota"] });
-      toast.success("Akun Google dilepaskan dari kursi.");
+      toast.success("Akun Google/Firebase dilepaskan dari kursi.");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -348,7 +195,7 @@ function EditDialog({ anggota, onClose }: { anggota: Anggota; onClose: () => voi
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Email (Google)">
+          <Field label="Email">
             <Input value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="nama@gmail.com" />
           </Field>
           <div className="grid grid-cols-2 gap-3">
@@ -384,7 +231,7 @@ function EditDialog({ anggota, onClose }: { anggota: Anggota; onClose: () => voi
           <Field label="Motto">
             <Input value={form.motto} onChange={(e) => set("motto", e.target.value)} />
           </Field>
-          {anggota.user_id && (
+          {anggota.firebaseUid && (
             <Button
               variant="outline"
               size="sm"
@@ -392,7 +239,7 @@ function EditDialog({ anggota, onClose }: { anggota: Anggota; onClose: () => voi
               disabled={unlink.isPending}
               className="w-full text-destructive"
             >
-              Lepaskan tautan akun Google
+              Lepaskan tautan akun Google/Firebase
             </Button>
           )}
         </div>

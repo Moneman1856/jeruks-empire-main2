@@ -1,24 +1,28 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth, db } from "@/integrations/firebase/client";
+import { seedFirestoreIfEmpty } from "@/integrations/firebase/seed";
 import { AppShell } from "@/components/empire/AppShell";
 import { Crest } from "@/components/empire/Crest";
 import { Button } from "@/components/ui/button";
 import { Clock, LogOut } from "lucide-react";
 import { hasCompletedTour, startTour } from "@/lib/onboarding-tour";
+import { signOut } from "firebase/auth";
 
-// ⚠️ SEMENTARA: gerbang auth dibuka untuk audit/scan eksternal.
-// Kembalikan blok beforeLoad asli setelah perbaikan selesai.
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async () => {
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) {
+    const user = await new Promise<import("firebase/auth").User | null>((resolve) => {
+      const unsub = onAuthStateChanged(auth, (u) => { unsub(); resolve(u); });
+    });
+    if (!user) {
       const { redirect } = await import("@tanstack/react-router");
       throw redirect({ to: "/auth" });
     }
-    return { user: data.user };
+    return { user };
   },
   component: AuthenticatedLayout,
 });
@@ -26,31 +30,36 @@ export const Route = createFileRoute("/_authenticated")({
 function AuthenticatedLayout() {
   const { user } = Route.useRouteContext();
   const [checking, setChecking] = useState(true);
-  const [hasMember, setHasMember] = useState<boolean>(false);
-  const [pending, setPending] = useState<{ email: string; created_at: string } | null>(null);
+  const [hasMember, setHasMember] = useState(false);
 
   const { refetch } = useQuery({
-    queryKey: ["membership-check", user.id],
+    queryKey: ["membership-check", user.uid],
     queryFn: async () => {
-      const [{ data: anggota }, { data: pendingRow }] = await Promise.all([
-        supabase.from("anggota").select("id").eq("user_id", user.id).maybeSingle(),
-        supabase.from("pending_akses").select("email, created_at").eq("user_id", user.id).maybeSingle(),
-      ]);
-      setHasMember(!!anggota);
-      setPending(pendingRow);
+      // Seed data if Firestore is empty (first launch)
+      await seedFirestoreIfEmpty();
+
+      const email = user.email?.toLowerCase() ?? "";
+      const byUid = query(collection(db, "anggota"), where("firebaseUid", "==", user.uid));
+      const snapUid = await getDocs(byUid);
+      if (!snapUid.empty) { setHasMember(true); setChecking(false); return true; }
+
+      const byEmail = query(collection(db, "anggota"), where("email", "==", email));
+      const snapEmail = await getDocs(byEmail);
+      const found = !snapEmail.empty;
+      setHasMember(found);
       setChecking(false);
-      return { anggota, pendingRow };
+      return found;
     },
   });
 
-  // Poll every 8s while pending so user sees approval automatically
+  // Poll every 8s while not yet a member
   useEffect(() => {
-    if (!pending || hasMember) return;
+    if (hasMember || checking) return;
     const t = setInterval(() => refetch(), 8000);
     return () => clearInterval(t);
-  }, [pending, hasMember, refetch]);
+  }, [hasMember, checking, refetch]);
 
-  // Auto-start onboarding tour on first visit after membership confirmed
+  // Start onboarding tour on first visit
   useEffect(() => {
     if (!hasMember || checking) return;
     if (hasCompletedTour()) return;
@@ -67,7 +76,7 @@ function AuthenticatedLayout() {
   }
 
   if (!hasMember) {
-    return <PendingScreen email={user.email ?? pending?.email ?? ""} />;
+    return <PendingScreen email={user.email ?? ""} />;
   }
 
   return (
@@ -78,8 +87,8 @@ function AuthenticatedLayout() {
 }
 
 function PendingScreen({ email }: { email: string }) {
-  const signOut = async () => {
-    await supabase.auth.signOut();
+  const handleSignOut = async () => {
+    await signOut(auth);
     window.location.href = "/auth";
   };
   return (
@@ -94,10 +103,10 @@ function PendingScreen({ email }: { email: string }) {
         <h1 className="font-display text-3xl text-empire">Tunggu sejenak, Calon Bangsawan</h1>
         <p className="text-sm text-muted-foreground leading-relaxed">
           Akun <span className="font-mono text-foreground">{email}</span> belum
-          terdaftar di silsilah kerajaan. Admin akan menautkan akun Anda ke
-          kursi yang tersedia. Halaman ini akan terbuka otomatis begitu disetujui.
+          terdaftar di silsilah kerajaan. Hubungi Admin untuk didaftarkan.
+          Halaman ini akan terbuka otomatis begitu disetujui.
         </p>
-        <Button variant="outline" onClick={signOut} className="gap-2">
+        <Button variant="outline" onClick={handleSignOut} className="gap-2">
           <LogOut className="size-4" /> Keluar
         </Button>
       </div>
