@@ -265,6 +265,15 @@
 .crest-bloom { animation: crest-bloom 700ms cubic-bezier(.2,.8,.2,1) both; }
 .segment-bloom { animation: segment-bloom 500ms ease-out both; transform-origin: center; }
 
+/* Page transition — lightweight CSS-only, no exit delay */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-page-enter {
+  animation: page-enter 180ms ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .crest-bloom, .segment-bloom { animation: none !important; }
 }

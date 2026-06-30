@@ -334,17 +334,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             "transition-all duration-300",
           )}
         >
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={pathname}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.22, ease: "easeOut" }}
-            >
-              {children}
-            </motion.div>
-          </AnimatePresence>
+          <div key={pathname} className="animate-page-enter">
+            {children}
+          </div>
         </main>
 
         {/* DESKTOP FOOTER */}
