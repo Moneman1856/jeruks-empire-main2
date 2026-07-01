@@ -97,7 +97,7 @@ function ParaBangsawan() {
                   <div className="flex-1 min-w-0 text-left">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <h3 className="font-medium truncate">{a.nama}</h3>
-                      {isYM && <Crown className="size-4 text-plum" />}
+                      {isYM && <img src="/logo.png" alt="Yang Mulia" className="size-4 object-contain drop-shadow-sm" />}
                     </div>
                     <p className={`text-xs ${isYM ? "text-plum font-medium" : "text-muted-foreground"}`}>
                       {roleLabel[a.role]}
@@ -134,7 +134,7 @@ function ParaBangsawan() {
                     <div className="text-center">
                       <div className="flex items-center justify-center gap-1.5">
                         <h3 className="font-medium text-lg">{a.nama}</h3>
-                        {isYM && <Crown className="size-5 text-plum" />}
+                        {isYM && <img src="/logo.png" alt="Yang Mulia" className="size-5 object-contain drop-shadow-sm" />}
                       </div>
                       <p className={`text-sm ${isYM ? "text-plum font-medium" : "text-muted-foreground"}`}>
                         {roleLabel[a.role]} {a.panggilan ? `• Akrab disapa "${a.panggilan}"` : ""}

@@ -97,7 +97,7 @@ function AdminPage() {
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate flex items-center gap-1.5">
                   {a.role === "manager" && <Shield className="size-3.5 text-plum" />}
-                  {a.role === "yang_mulia" && <Crown className="size-3.5 text-plum" />}
+                  {a.role === "yang_mulia" && <img src="/logo.png" alt="Yang Mulia" className="size-4 object-contain drop-shadow-sm" />}
                   {a.nama}
                 </div>
                 <div className="text-xs text-muted-foreground truncate">

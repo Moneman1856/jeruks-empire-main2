@@ -115,7 +115,7 @@ function Almanak() {
                         {JENIS_LABEL[e.jenis]}
                       </span>
                       <span className="font-medium">{e.nama}</span>
-                      {e.jenis === "uas" && <Crown className="size-3.5 text-plum" />}
+                      {e.jenis === "uas" && <img src="/logo.png" alt="UAS" className="size-4 object-contain drop-shadow-sm" />}
                     </div>
                     <p className="text-xs text-muted-foreground font-mono mt-1">
                       {format(parseISO(e.tanggal_mulai), "d MMM yyyy", { locale: idLocale })}
