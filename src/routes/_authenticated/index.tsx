@@ -1,9 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { differenceInCalendarDays, format, isToday, parseISO } from "date-fns";
+import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
-import { motion } from "framer-motion";
-import { Pin, ArrowRight, Calendar, Coins, ClipboardList, QrCode, MessagesSquare, FolderOpen } from "lucide-react";
+import { Pin, ArrowRight, Calendar, Coins, ClipboardList, QrCode, MessagesSquare, FolderOpen, Gift } from "lucide-react";
 import { DISCORD_INVITE_URL, TUGAS_DRIVE_URL } from "@/lib/external-links";
 import {
   titahListQuery,
@@ -13,6 +12,7 @@ import {
   kasPeriodeListQuery,
   pengeluaranListQuery,
   jadwalListQuery,
+  anggotaListQuery,
 } from "@/lib/queries";
 import { formatRupiah } from "@/lib/utils";
 import { SegmenDivider } from "@/components/empire/SegmenDivider";
@@ -32,6 +32,25 @@ export const Route = createFileRoute("/_authenticated/")({
 
 const HARI_LABEL = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
+function getNextBirthday(anggota: Array<{ nama: string; panggilan: string | null; tgl_lahir: string | null }> | undefined) {
+  if (!anggota) return null;
+  const today = new Date();
+  const thisYear = today.getFullYear();
+
+  const upcoming = anggota
+    .filter((a) => a.tgl_lahir)
+    .map((a) => {
+      const [, mm, dd] = a.tgl_lahir!.split("-");
+      let bday = new Date(thisYear, Number(mm) - 1, Number(dd));
+      if (bday < today) bday = new Date(thisYear + 1, Number(mm) - 1, Number(dd));
+      const days = differenceInCalendarDays(bday, today);
+      return { nama: a.panggilan ?? a.nama.split(" ")[0], days, bday };
+    })
+    .sort((a, b) => a.days - b.days);
+
+  return upcoming[0] ?? null;
+}
+
 function Beranda() {
   const { data: titah } = useQuery(titahListQuery);
   const { data: events } = useQuery(eventListQuery);
@@ -40,6 +59,7 @@ function Beranda() {
   const { data: periode } = useQuery(kasPeriodeListQuery);
   const { data: pengeluaran } = useQuery(pengeluaranListQuery);
   const { data: jadwal } = useQuery(jadwalListQuery);
+  const { data: anggota } = useQuery(anggotaListQuery);
 
   const pinned = titah?.find((t) => t.pinned) ?? titah?.[0];
 
@@ -61,16 +81,12 @@ function Beranda() {
 
   const todayDow = new Date().getDay() === 0 ? 7 : new Date().getDay();
   const jadwalHariIni = jadwal?.filter((j) => j.hari === todayDow);
+  const nextBirthday = getNextBirthday(anggota);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35 }}
-      className="space-y-6"
-    >
+    <div className="space-y-6">
       {/* Quick actions */}
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section data-tour="quick-actions" className="grid gap-3 sm:grid-cols-3">
         <Link
           to="/absen"
           className="group rounded-xl border border-empire/40 bg-gradient-to-br from-empire/10 to-transparent p-4 hover:border-empire transition-all hover:-translate-y-0.5 hover:shadow-md"
@@ -108,7 +124,7 @@ function Beranda() {
       </section>
 
       {/* Hero / Titah */}
-      <section>
+      <section data-tour="titah">
         {pinned ? (
           <article className="rounded-2xl border-l-4 border-empire bg-card p-5 shadow-sm">
             <div className="flex items-start gap-2">
@@ -131,8 +147,8 @@ function Beranda() {
       <SegmenDivider />
 
       {/* Grid summary */}
-      <section className="grid gap-4 md:grid-cols-3">
-        {/* Countdown */}
+      <section data-tour="summary-grid" className="grid gap-4 md:grid-cols-4">
+        {/* Countdown UAS */}
         <div className="rounded-2xl border bg-card p-4">
           <div className="flex items-center gap-2 text-empire">
             <Calendar className="size-4" />
@@ -150,6 +166,27 @@ function Beranda() {
             </>
           ) : (
             <p className="mt-2 text-sm text-muted-foreground">Belum ada UAS terjadwal.</p>
+          )}
+        </div>
+
+        {/* Birthday countdown */}
+        <div className="rounded-2xl border bg-card p-4">
+          <div className="flex items-center gap-2 text-empire">
+            <Gift className="size-4" />
+            <h2 className="text-sm font-semibold uppercase tracking-wider">Ulang Tahun</h2>
+          </div>
+          {nextBirthday ? (
+            <>
+              <p className="mt-2 font-mono text-4xl text-foreground">
+                {nextBirthday.days === 0 ? "🎂" : nextBirthday.days}
+                {nextBirthday.days > 0 && <span className="text-base text-muted-foreground"> hari</span>}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {nextBirthday.days === 0 ? `Selamat ulang tahun` : `Menuju ultah`} {nextBirthday.nama} · {format(nextBirthday.bday, "d MMM", { locale: idLocale })}
+              </p>
+            </>
+          ) : (
+            <p className="mt-2 text-sm text-muted-foreground">Belum ada data lahir.</p>
           )}
         </div>
 
@@ -205,7 +242,7 @@ function Beranda() {
       </section>
 
       {/* Jadwal hari ini */}
-      <section className="rounded-2xl border bg-card p-4">
+      <section data-tour="jadwal" className="rounded-2xl border bg-card p-4">
         <h2 className="font-display text-xl text-empire">
           Jadwal Hari Ini — {HARI_LABEL[new Date().getDay()]}
         </h2>
@@ -234,7 +271,7 @@ function Beranda() {
           </p>
         )}
       </section>
-    </motion.div>
+    </div>
   );
 }
 
